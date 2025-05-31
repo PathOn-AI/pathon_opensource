@@ -1,12 +1,14 @@
 # Clean and Combine LeRobot Datasets
 
+Recording all episodes correctly during data collection is tedious and nearly impossible due to the difficulty of teleoperation. We provide a script that allows developers to select episodes from different datasets and combine them into a single LeRobot dataset.
+
+Please note: Here we assume the episode duration is the same across all episodes from different datasets. If you want to filter and merge datasets with different episode durations, please submit a PR to change the script.
+
+## Step 1: Generate judge.jsonl file and add your judgments
+
 ```bash
 export HUGGINGFACE_HUB_TOKEN=your_huggingface_token_here
 ```
-
-Here we assume the episode duration is the same across all episodes from different datasets. If you want to filter and merge datasets with different episode durations, please submit a PR to change the script.
-
-## Step 1: Generate judge.jsonl file and add your judgments
 
 Create a judgment file where each episode is scored based on data quality:
 
