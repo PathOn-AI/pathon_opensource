@@ -1,6 +1,9 @@
 # Remote Inference Server Setup Guide
 
-This guide walks you through setting up a remote inference server on high-end GPUs (3090/4090/5090) and connecting to it from your MacBook Pro.
+This guide walks you through setting up a remote inference server on high-end GPUs (3090/4090/5090) and connecting to it from your MacBook Pro. 
+Similar Implementations 
+* from Isaac-GR00T: https://github.com/NVIDIA/Isaac-GR00T/blob/main/scripts/inference_service.py#:20, https://github.com/NVIDIA/Isaac-GR00T/blob/main/gr00t/eval/robot.py
+* from OpenPi: https://github.com/Physical-Intelligence/openpi/tree/main/src/openpi
 
 ## 1. Set Up the WebSocket Server on GPU Machine
 
