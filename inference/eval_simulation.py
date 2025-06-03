@@ -55,7 +55,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 from pprint import pformat
-from typing import Callable
+from typing import Callable, Optional, Dict, Any
 
 import einops
 import gymnasium as gym
@@ -80,18 +80,123 @@ from lerobot.common.utils.utils import (
 from lerobot.configs import parser
 from lerobot.configs.eval import EvalPipelineConfig
 from lerobot_client import SyncLeRobotClient
-import numpy as np
 from collections import OrderedDict
 
-# def create_sample_observation():
-#     """Create sample observation (replace with your actual observation)"""
-#     observation = OrderedDict()
-#     observation['agent_pos'] = np.random.randn(1, 14).astype(np.float32)
-#     observation['pixels'] = {
-#         'top': np.random.randint(0, 256, (1, 480, 640, 3), dtype=np.uint8)
-#     }
-#     return observation
 
+# Rate limiting configurations
+CONSERVATIVE_CONFIG = {
+    'strategy': 'exponential_backoff',
+    'initial_delay': 0.5,  # 500ms base delay - very conservative for ngrok
+    'max_delay': 60.0,     # Allow up to 1 minute delays
+    'backoff_factor': 2.0,
+    'max_retries': 15      # Even more retries for rate limits
+}
+
+AGGRESSIVE_CONFIG = {
+    'strategy': 'exponential_backoff',
+    'initial_delay': 0.15,  # 150ms base delay
+    'max_delay': 30.0,      # Up to 30 second delays
+    'backoff_factor': 1.5,
+    'max_retries': 8
+}
+
+SIMPLE_CONFIG = {
+    'strategy': 'simple_delay',
+    'initial_delay': 0.4,  # Fixed 400ms delay - more conservative for ngrok
+}
+
+# Default configuration for ngrok free tier
+DEFAULT_RATE_LIMIT_CONFIG = CONSERVATIVE_CONFIG
+
+
+class RateLimitHandler:
+    """Handles rate limiting with exponential backoff and retry logic."""
+    
+    def __init__(self, 
+                 initial_delay: float = 0.1, 
+                 max_delay: float = 60.0,  # Increased max delay
+                 backoff_factor: float = 2.0, 
+                 max_retries: int = 10):  # Increased max retries
+        self.initial_delay = initial_delay
+        self.max_delay = max_delay
+        self.backoff_factor = backoff_factor
+        self.max_retries = max_retries
+        
+    def execute_with_backoff(self, func, *args, **kwargs):
+        """Execute function with exponential backoff on rate limit errors."""
+        delay = self.initial_delay
+        
+        for attempt in range(self.max_retries):
+            try:
+                # Always add a small delay before each request
+                if attempt == 0:
+                    time.sleep(self.initial_delay)
+                return func(*args, **kwargs)
+            except Exception as e:
+                # Use the enhanced rate limit detection
+                if is_rate_limit_error(e):
+                    if attempt == self.max_retries - 1:
+                        logging.error(f"Max retries ({self.max_retries}) exceeded for rate limiting")
+                        # Instead of raising, wait for full reset and try once more
+                        logging.info("Waiting 60 seconds for rate limit to fully reset...")
+                        time.sleep(60)
+                        try:
+                            return func(*args, **kwargs)
+                        except Exception as final_e:
+                            logging.error(f"Final attempt failed: {final_e}")
+                            raise e
+                    
+                    # Determine the type of rate limit error for better logging
+                    error_str = str(e).lower()
+                    if "connectionrefused" in error_str or "websockets.exceptions" in error_str:
+                        logging.warning(f"Websocket-based rate limit hit (attempt {attempt + 1}/{self.max_retries}), waiting {delay:.2f}s before retry")
+                    else:
+                        logging.warning(f"Rate limit hit (attempt {attempt + 1}/{self.max_retries}), waiting {delay:.2f}s before retry")
+                    
+                    time.sleep(delay)
+                    delay = min(delay * self.backoff_factor, self.max_delay)
+                else:
+                    # Not a rate limit error, re-raise immediately
+                    logging.error(f"Non-rate-limit error: {e}")
+                    raise e
+        
+        raise Exception("Max retries exceeded")
+
+
+def is_rate_limit_error(exception) -> bool:
+    """Enhanced rate limit error detection that looks at the full exception chain."""
+    # Convert the entire exception chain to string
+    error_chain = str(exception).lower()
+    
+    # Also check the type and any nested exceptions
+    if hasattr(exception, '__cause__') and exception.__cause__:
+        error_chain += " " + str(exception.__cause__).lower()
+    if hasattr(exception, '__context__') and exception.__context__:
+        error_chain += " " + str(exception.__context__).lower()
+    
+    # Look for rate limit indicators in the full error chain
+    rate_limit_indicators = [
+        'rate limit', 'exceeded', 'connections per minute', 
+        'limit will reset', 'too many requests', 'too many connections',
+        'connection limit', 'quota exceeded', 'throttle', 'throttled',
+        'unsupported protocol; expected http/1.1: you have exceeded your limit'
+    ]
+    
+    # Special case: websockets library errors during rate limiting
+    websocket_rate_limit_indicators = [
+        "connectionrefused",
+        "module 'websockets.exceptions' has no attribute 'connectionrefused'",
+        "invalidmessage",
+        "did not receive a valid http response"
+    ]
+    
+    # Check for standard rate limit messages
+    is_standard_rate_limit = any(indicator in error_chain for indicator in rate_limit_indicators)
+    
+    # Check for websocket library errors that occur during rate limiting
+    is_websocket_rate_limit = any(indicator in error_chain for indicator in websocket_rate_limit_indicators)
+    
+    return is_standard_rate_limit or is_websocket_rate_limit
 
 
 def rollout(
@@ -100,8 +205,9 @@ def rollout(
     seeds: list[int] | None = None,
     return_observations: bool = False,
     render_callback: Callable[[gym.vector.VectorEnv], None] | None = None,
+    rate_limit_config: Optional[Dict[str, Any]] = None,
 ) -> dict:
-    """Run a batched policy rollout once through a batch of environments.
+    """Run a batched policy rollout once through a batch of environments with rate limiting.
 
     Note that all environments in the batch are run until the last environment is done. This means some
     data will probably need to be discarded (for environments that aren't the first one to be done).
@@ -129,11 +235,33 @@ def rollout(
             are returned optionally because they typically take more memory to cache. Defaults to False.
         render_callback: Optional rendering callback to be used after the environments are reset, and after
             every step.
+        rate_limit_config: Configuration for rate limiting. Dict with keys:
+            - strategy: 'simple_delay' or 'exponential_backoff' (default: 'exponential_backoff')
+            - initial_delay: Base delay in seconds (default: 0.15)
+            - max_delay: Maximum delay in seconds (default: 5.0)
+            - backoff_factor: Multiplier for delay on each retry (default: 2.0)
+            - max_retries: Maximum number of retries (default: 5)
     Returns:
         The dictionary described above.
     """
     assert isinstance(policy, nn.Module), "Policy must be a PyTorch nn module."
     device = get_device_from_parameters(policy)
+
+    # Configure rate limiting
+    if rate_limit_config is None:
+        rate_limit_config = DEFAULT_RATE_LIMIT_CONFIG.copy()
+    
+    # Initialize rate limiting handler
+    strategy = rate_limit_config.get('strategy', 'exponential_backoff')
+    if strategy == 'exponential_backoff':
+        rate_handler = RateLimitHandler(
+            initial_delay=rate_limit_config.get('initial_delay', 0.15),
+            max_delay=rate_limit_config.get('max_delay', 5.0),
+            backoff_factor=rate_limit_config.get('backoff_factor', 2.0),
+            max_retries=rate_limit_config.get('max_retries', 5)
+        )
+    
+    logging.info(f"Using rate limiting strategy: {strategy} with config: {rate_limit_config}")
 
     # Reset the policy and environments.
     policy.reset()
@@ -148,6 +276,10 @@ def rollout(
     all_dones = []
 
     step = 0
+    consecutive_non_rate_limit_errors = 0  # Only count non-rate-limit errors
+    max_consecutive_non_rate_limit_errors = 5  # Allow more errors before aborting
+    total_rate_limit_errors = 0
+    
     # Keep track of which environments are done.
     done = np.array([False] * env.num_envs)
     max_steps = env.call("_max_episode_steps")[0]
@@ -158,40 +290,126 @@ def rollout(
         leave=False,
     )
     check_env_attributes_and_types(env)
+    
     while not np.all(done):
-        # Numpy array to tensor and changing dictionary keys to LeRobot policy format.
-        # test
-        with SyncLeRobotClient() as client:
-            action = client.select_action(observation)
-            # for rate limit
-            time.sleep(0.2)
+        try:
+            # Get action with rate limiting
+            if strategy == 'exponential_backoff':
+                def get_action():
+                    with SyncLeRobotClient() as client:
+                        return client.select_action(observation)
+                action = rate_handler.execute_with_backoff(get_action)
+                
+            elif strategy == 'simple_delay':
+                # Simple delay strategy with retry for rate limits
+                max_simple_retries = 5
+                for simple_retry in range(max_simple_retries):
+                    try:
+                        time.sleep(rate_limit_config.get('initial_delay', 0.15))
+                        with SyncLeRobotClient() as client:
+                            action = client.select_action(observation)
+                        break  # Success, exit retry loop
+                    except Exception as e:
+                        if is_rate_limit_error(e):
+                            if simple_retry == max_simple_retries - 1:
+                                logging.warning("Rate limit hit, waiting 60s for reset...")
+                                time.sleep(60)
+                                try:
+                                    with SyncLeRobotClient() as client:
+                                        action = client.select_action(observation)
+                                    break
+                                except Exception as final_e:
+                                    raise final_e
+                            else:
+                                wait_time = (simple_retry + 1) * 2  # 2, 4, 6, 8, 10 seconds
+                                logging.warning(f"Rate limit hit, waiting {wait_time}s...")
+                                time.sleep(wait_time)
+                        else:
+                            raise e
+            else:
+                # Fallback to no rate limiting
+                logging.warning(f"Unknown rate limiting strategy: {strategy}, using no rate limiting")
+                with SyncLeRobotClient() as client:
+                    action = client.select_action(observation)
+            
+            # Reset error counter on successful request
+            consecutive_non_rate_limit_errors = 0
 
-        observation, reward, terminated, truncated, info = env.step(action)
-        if render_callback is not None:
-            render_callback(env)
+        except Exception as e:
+            # Use enhanced rate limit detection
+            if is_rate_limit_error(e):
+                total_rate_limit_errors += 1
+                error_str = str(e).lower()
+                
+                # Determine the type of rate limit error for better logging
+                if "connectionrefused" in error_str or "websockets.exceptions" in error_str:
+                    logging.warning(f"Websocket-based rate limit error at step {step} (total rate limit errors: {total_rate_limit_errors}): {e}")
+                elif "exceeded your limit" in error_str:
+                    logging.warning(f"Direct ngrok rate limit error at step {step} (total rate limit errors: {total_rate_limit_errors}): {e}")
+                else:
+                    logging.warning(f"Rate limit error at step {step} (total rate limit errors: {total_rate_limit_errors}): {e}")
+                
+                # For rate limit errors, wait longer and continue
+                logging.info("Waiting 60 seconds for rate limit to reset...")
+                time.sleep(60)
+                continue  # Retry the same step
+            else:
+                # Non-rate-limit error
+                consecutive_non_rate_limit_errors += 1
+                logging.error(f"Non-rate-limit error at step {step} (consecutive: {consecutive_non_rate_limit_errors}): {e}")
+                
+                if consecutive_non_rate_limit_errors >= max_consecutive_non_rate_limit_errors:
+                    logging.error(f"Too many consecutive non-rate-limit errors ({consecutive_non_rate_limit_errors}), aborting rollout")
+                    raise e
+                
+                # For non-rate-limit errors, wait briefly and continue
+                time.sleep(1)
+                continue
 
-        # VectorEnv stores is_success in `info["final_info"][env_index]["is_success"]`. "final_info" isn't
-        # available of none of the envs finished.
-        if "final_info" in info:
-            successes = [info["is_success"] if info is not None else False for info in info["final_info"]]
-        else:
-            successes = [False] * env.num_envs
+        # Continue with environment step
+        try:
+            observation, reward, terminated, truncated, info = env.step(action)
+            if render_callback is not None:
+                render_callback(env)
 
-        # Keep track of which environments are done so far.
-        done = terminated | truncated | done
+            # VectorEnv stores is_success in `info["final_info"][env_index]["is_success"]`. "final_info" isn't
+            # available if none of the envs finished.
+            if "final_info" in info:
+                successes = [info["is_success"] if info is not None else False for info in info["final_info"]]
+            else:
+                successes = [False] * env.num_envs
 
-        all_actions.append(torch.from_numpy(action))
-        all_rewards.append(torch.from_numpy(reward))
-        all_dones.append(torch.from_numpy(done))
-        all_successes.append(torch.tensor(successes))
+            # Keep track of which environments are done so far.
+            done = terminated | truncated | done
 
-        step += 1
-        running_success_rate = (
-            einops.reduce(torch.stack(all_successes, dim=1), "b n -> b", "any").numpy().mean()
-        )
-        progbar.set_postfix({"running_success_rate": f"{running_success_rate.item() * 100:.1f}%"})
-        progbar.update()
+            all_actions.append(torch.from_numpy(action))
+            all_rewards.append(torch.from_numpy(reward))
+            all_dones.append(torch.from_numpy(done))
+            all_successes.append(torch.tensor(successes))
 
+            step += 1
+            running_success_rate = (
+                einops.reduce(torch.stack(all_successes, dim=1), "b n -> b", "any").numpy().mean()
+            )
+            progbar.set_postfix({
+                "running_success_rate": f"{running_success_rate.item() * 100:.1f}%",
+                "step": step,
+                "rate_limit_errors": total_rate_limit_errors,
+                "other_errors": consecutive_non_rate_limit_errors
+            })
+            progbar.update()
+            
+        except Exception as e:
+            logging.error(f"Environment step error at step {step}: {e}")
+            consecutive_non_rate_limit_errors += 1
+            if consecutive_non_rate_limit_errors >= max_consecutive_non_rate_limit_errors:
+                logging.error("Too many consecutive environment errors, aborting rollout")
+                raise e
+            time.sleep(1)  # Brief pause before retry
+            continue
+
+    progbar.close()
+    
     # Track the final observation.
     if return_observations:
         observation = preprocess_observation(observation)
@@ -213,6 +431,7 @@ def rollout(
     if hasattr(policy, "use_original_modules"):
         policy.use_original_modules()
 
+    logging.info(f"Rollout completed: {step} steps, {total_rate_limit_errors} rate limit errors, {consecutive_non_rate_limit_errors} final consecutive non-rate-limit errors")
     return ret
 
 
@@ -224,6 +443,7 @@ def eval_policy(
     videos_dir: Path | None = None,
     return_episode_data: bool = False,
     start_seed: int | None = None,
+    rate_limit_config: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """
     Args:
@@ -236,6 +456,7 @@ def eval_policy(
             the "episodes" key of the returned dictionary.
         start_seed: The first seed to use for the first individual rollout. For all subsequent rollouts the
             seed is incremented by 1. If not provided, the environments are not manually seeded.
+        rate_limit_config: Configuration for rate limiting API calls.
     Returns:
         Dictionary with metrics and data regarding the rollouts.
     """
@@ -246,6 +467,11 @@ def eval_policy(
         raise ValueError(
             f"Policy of type 'PreTrainedPolicy' is expected, but type '{type(policy)}' was provided."
         )
+
+    # Set default rate limiting config if not provided
+    if rate_limit_config is None:
+        rate_limit_config = DEFAULT_RATE_LIMIT_CONFIG.copy()
+        logging.info(f"Using default rate limiting configuration: {rate_limit_config}")
 
     start = time.time()
     policy.eval()
@@ -265,6 +491,7 @@ def eval_policy(
     # Callback for visualization.
     def render_frame(env: gym.vector.VectorEnv):
         # noqa: B023
+        nonlocal n_episodes_rendered
         if n_episodes_rendered >= max_episodes_rendered:
             return
         n_to_render_now = min(max_episodes_rendered - n_episodes_rendered, env.num_envs)
@@ -294,12 +521,15 @@ def eval_policy(
             seeds = range(
                 start_seed + (batch_ix * env.num_envs), start_seed + ((batch_ix + 1) * env.num_envs)
             )
+        
+        # Use the enhanced rollout function with rate limiting
         rollout_data = rollout(
             env,
             policy,
             seeds=list(seeds) if seeds else None,
             return_observations=return_episode_data,
             render_callback=render_frame if max_episodes_rendered > 0 else None,
+            rate_limit_config=rate_limit_config,
         )
 
         # Figure out where in each rollout sequence the first done condition was encountered (results after
@@ -473,12 +703,19 @@ def eval_main(cfg: EvalPipelineConfig):
     env = make_env(cfg.env, n_envs=cfg.eval.batch_size, use_async_envs=cfg.eval.use_async_envs)
 
     logging.info("Making policy.")
-
     policy = make_policy(
         cfg=cfg.policy,
         env_cfg=cfg.env,
     )
     policy.eval()
+
+    # Configure rate limiting - you can customize this based on your needs
+    rate_limit_config = CONSERVATIVE_CONFIG.copy()  # Use conservative config by default
+    
+    # Optional: Add command line arguments for rate limiting configuration
+    # You could extend EvalPipelineConfig to include rate limiting options
+    
+    logging.info(f"Using rate limiting configuration: {rate_limit_config}")
 
     with torch.no_grad(), torch.autocast(device_type=device.type) if cfg.policy.use_amp else nullcontext():
         info = eval_policy(
@@ -488,6 +725,7 @@ def eval_main(cfg: EvalPipelineConfig):
             max_episodes_rendered=10,
             videos_dir=Path(cfg.output_dir) / "videos",
             start_seed=cfg.seed,
+            rate_limit_config=rate_limit_config,  # Pass rate limiting config
         )
     print(info["aggregated"])
 

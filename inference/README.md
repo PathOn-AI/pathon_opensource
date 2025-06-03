@@ -1,21 +1,61 @@
-# Set Up Inference Server on 3090/4090/5090, make remote api call
+# Remote Inference Server Setup Guide
 
-## 1. set up the websocket server on 3090/
+This guide walks you through setting up a remote inference server on high-end GPUs (3090/4090/5090) and connecting to it from your MacBook Pro.
 
+## 1. Set Up the WebSocket Server on GPU Machine
 
-alternatively, you can set up the remote server
+**Option A: Direct Setup on 3090/4090/5090**
+```bash
+python lerobot/inference/websocket_server.py \
+    --policy.path=DanqingZ/act_aloha_insertion \
+    --output_dir=outputs/eval/act_aloha_insertion/last \
+    --env.type=aloha \
+    --env.task=AlohaInsertion-v0 \
+    --eval.n_episodes=10 \
+    --eval.batch_size=10 \
+    --policy.device=cuda \
+    --policy.use_amp=false
+```
 
+**Option B: Alternative Remote Server Setup**
+You can alternatively set up the remote server using your preferred configuration.
 
+## 2. Set Up Client-Side Code on MacBook Pro
 
-## 2. set up client side code on your macbook pro
-python lerobot/inference/websocket_server.py --policy.path=DanqingZ/act_aloha_insertion     --output_dir=outputs/eval/act_aloha_insertion/last     --env.type=aloha     --env.task=AlohaInsertion-v0     --eval.n_episodes=1     --eval.batch_size=1     --policy.device=cuda     --policy.use_amp=false
+### Expose Server with ngrok
+```bash
+ngrok tcp 8765
+```
 
-ngrok http 8765
+This will provide output similar to:
+```
+Web Interface: http://127.0.0.1:4040
+Forwarding: tcp://6.tcp.us-cal-1.ngrok.io:16363 -> localhost:8765
+```
 
-ValueError: unsupported protocol; expected HTTP/1.1: You have exceeded your limit on connections per minute. This limit will reset within 1 minute. If you expect to continually exceed these limits, please reach out to support (support@ngrok.com)
+### Configure Client Connection
+Copy and paste the ngrok forwarding URL into your `lerobot_client.py` file to enable the LeRobot client to connect to the remote server.
 
-The above exception was the direct cause of the following exception:
+## 3. Use Remote Server Response Instead of Direct Policy Output
 
-## 3. use the response from remote server instead of direct policy output
+Run the evaluation script configured to use the remote server:
 
-python eval_simulation.py     --policy.path=DanqingZ/act_aloha_insertion     --output_dir=outputs/eval/act_aloha_insertion/test_local_server_5 --env.type=aloha     --env.task=AlohaInsertion-v0     --eval.n_episodes=1    --eval.batch_size=1     --policy.device=cuda --policy.use_amp=false
+```bash
+python eval_simulation.py \
+    --policy.path=DanqingZ/act_aloha_insertion \
+    --output_dir=outputs/eval/act_aloha_insertion/test_local_server_5 \
+    --env.type=aloha \
+    --env.task=AlohaInsertion-v0 \
+    --eval.n_episodes=10 \
+    --eval.batch_size=10 \
+    --policy.device=cuda \
+    --policy.use_amp=false
+```
+
+## Notes
+
+- Ensure your GPU machine has the necessary CUDA drivers and PyTorch installation
+- Verify that port 8765 is accessible on your GPU machine
+- Update the ngrok URL in your client code each time you restart ngrok (URLs change on restart)
+- Monitor GPU memory usage during inference to ensure optimal performance
+
