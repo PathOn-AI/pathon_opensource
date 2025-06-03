@@ -1,3 +1,4 @@
+outputs/
 .DS_Store
 filtered_dataset/
 __pycache__

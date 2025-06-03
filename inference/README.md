@@ -1,0 +1,61 @@
+# Remote Inference Server Setup Guide
+
+This guide walks you through setting up a remote inference server on high-end GPUs (3090/4090/5090) and connecting to it from your MacBook Pro.
+
+## 1. Set Up the WebSocket Server on GPU Machine
+
+**Option A: Direct Setup on 3090/4090/5090**
+```bash
+python lerobot/inference/websocket_server.py \
+    --policy.path=DanqingZ/act_aloha_insertion \
+    --output_dir=outputs/eval/act_aloha_insertion/last \
+    --env.type=aloha \
+    --env.task=AlohaInsertion-v0 \
+    --eval.n_episodes=10 \
+    --eval.batch_size=10 \
+    --policy.device=cuda \
+    --policy.use_amp=false
+```
+
+**Option B: Alternative Remote Server Setup**
+You can alternatively set up the remote server using your preferred configuration.
+
+## 2. Set Up Client-Side Code on MacBook Pro
+
+### Expose Server with ngrok
+```bash
+ngrok tcp 8765
+```
+
+This will provide output similar to:
+```
+Web Interface: http://127.0.0.1:4040
+Forwarding: tcp://6.tcp.us-cal-1.ngrok.io:16363 -> localhost:8765
+```
+
+### Configure Client Connection
+Copy and paste the ngrok forwarding URL into your `lerobot_client.py` file to enable the LeRobot client to connect to the remote server.
+
+## 3. Use Remote Server Response Instead of Direct Policy Output
+
+Run the evaluation script configured to use the remote server:
+
+```bash
+python eval_simulation.py \
+    --policy.path=DanqingZ/act_aloha_insertion \
+    --output_dir=outputs/eval/act_aloha_insertion/test_local_server_5 \
+    --env.type=aloha \
+    --env.task=AlohaInsertion-v0 \
+    --eval.n_episodes=10 \
+    --eval.batch_size=10 \
+    --policy.device=cuda \
+    --policy.use_amp=false
+```
+
+## Notes
+
+- Ensure your GPU machine has the necessary CUDA drivers and PyTorch installation
+- Verify that port 8765 is accessible on your GPU machine
+- Update the ngrok URL in your client code each time you restart ngrok (URLs change on restart)
+- Monitor GPU memory usage during inference to ensure optimal performance
+
