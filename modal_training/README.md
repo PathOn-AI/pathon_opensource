@@ -91,3 +91,4 @@ For a long-running training job, try running in detached mode and change the tim
 ```bash
 modal run -d lerobot_pi0.py
 ```
+Cost estimate: $3.74 spent for 10k steps, fine-tuning Pi0 on an H100.
