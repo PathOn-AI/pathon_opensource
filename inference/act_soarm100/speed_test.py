@@ -1,144 +1,185 @@
 #!/usr/bin/env python
+
 import asyncio
 import numpy as np
-from collections import OrderedDict
-from lerobot_client import LeRobotClient
-from lerobot_client import SyncLeRobotClient
-from time import time
-
 import torch
-import cv2
-import numpy as np
-
+import time
+from collections import OrderedDict
+from typing import Literal
+from lerobot_client import SyncLeRobotClient
 from lerobot.common.policies.act.modeling_act import ACTPolicy
-from lerobot.common.robot_devices.utils import busy_wait
-from lerobot.common.robot_devices.robots.utils import make_robot
-
-# reference: https://github.com/alexis779/slobot/blob/main/modal/lerobot/eval_policy.py
-
-inference_time_s = 30
-fps = 25
-device = "mps" 
-policy = ACTPolicy.from_pretrained("DanqingZ/act_so100_filtered_yellow_cuboid")
-policy.to(device)
 
 
-
-
-def create_sample_observation_aloha():
-    """Create sample observation (replace with your actual observation)"""
-    observation = OrderedDict()
-    observation['agent_pos'] = np.random.randn(1, 14).astype(np.float32)
-    observation['pixels'] = {
-        'top': np.random.randint(0, 256, (1, 480, 640, 3), dtype=np.uint8)
-    }
-    return observation
-
-def create_sample_observation_soarm100(format='numpy'):
-    """
-    Create sample observation with configurable output format
-    
-    Args:
-        format (str): 'tensor' for PyTorch tensors, 'numpy' for NumPy arrays
-        
-    Returns:
-        OrderedDict: Observation data in specified format
-    """
+def create_sample_observation_soarm100(format: Literal['numpy', 'tensor'] = 'tensor', device: str = 'cpu'):
+    """Create sample observation matching SO-ARM100 format"""
     observation = OrderedDict()
     
-    # State with shape [1, 6] instead of [1, 14]
+    # State with shape [1, 6]
     state = np.random.randn(1, 6).astype(np.float32)
-    
-    # Images nested structure with on_robot and phone cameras
-    # Shape is [1, 3, 480, 640] (batch, channels, height, width)
+    # Images with shape [1, 3, 480, 640] (batch, channels, height, width)
     on_robot_img = np.random.randint(0, 256, (1, 3, 480, 640), dtype=np.uint8)
     phone_img = np.random.randint(0, 256, (1, 3, 480, 640), dtype=np.uint8)
     
-    if format.lower() == 'tensor':
-        # Convert to PyTorch tensors
+    if format == 'tensor':
         observation['observation.state'] = torch.from_numpy(state)
         observation['observation.images.on_robot'] = torch.from_numpy(on_robot_img)
         observation['observation.images.phone'] = torch.from_numpy(phone_img)
+        
+        # Move to device and preprocess images like in real usage
+        for name in observation:
+            if "image" in name:
+                observation[name] = observation[name].type(torch.float32) / 255
+            observation[name] = observation[name].to(device)
     else:
-        # Keep as NumPy arrays (default)
+        # Keep as numpy arrays (for websocket transmission)
         observation['observation.state'] = state
         observation['observation.images.on_robot'] = on_robot_img
         observation['observation.images.phone'] = phone_img
     
-    
     return observation
 
-def local_inference_dummy_input():
-    # Read the follower state and access the frames from the cameras
-    # observation = robot.capture_observation()
 
-    # print(step)
-    # for name in observation:
-    #     if "image" in name:
-    #         observation[name] = observation[name].type(torch.float32) / 255
-    #         observation[name] = observation[name].permute(2, 0, 1).contiguous()
-    #     observation[name] = observation[name].unsqueeze(0)
-    #     observation[name] = observation[name].to(device)
-    #     print(name, observation[name].shape)
-    start_time = time()
-    for i in range(100):
-        # print(i)
-        # Update your observation here...
-        #observation = create_sample_observation_aloha()  # Replace with real observation
-        observation = create_sample_observation_soarm100(format='tensor')
-        for name in observation:
-            #import pdb; pdb.set_trace()
-            if "image" in name:
-                observation[name] = observation[name].type(torch.float32) / 255
-            observation[name] = observation[name].to(device)
-
-
-        action = policy.select_action(observation)
-        # print(f"   Step {i+1}: action shape {action.shape}")
-        # print(f"   Action: {action}")
-    end_time = time()
-    print(f"Time taken: {end_time - start_time} seconds")
-
-
-
-def remote_inference_dummy_input():
-    """SYNCHRONOUS example - no async/await needed!"""
-    print("🔄 Synchronous Usage (Recommended)")
-    print("-" * 35)
+def local_inference_test(num_iterations: int = 100, device: str = "mps"):
+    """Test local inference speed"""
+    print(f"🏠 Local Inference Test ({device})")
+    print("-" * 40)
     
-    # Use the sync client (automatically connects and disconnects)
-    with SyncLeRobotClient() as client:
+    # Load policy locally
+    policy = ACTPolicy.from_pretrained("DanqingZ/act_so100_filtered_yellow_cuboid")
+    policy.to(device)
+    policy.eval()
+    
+    # Warmup
+    print("Warming up...")
+    for _ in range(5):
+        observation = create_sample_observation_soarm100(format='tensor', device=device)
+        with torch.inference_mode():
+            _ = policy.select_action(observation)
+    
+    # Actual test
+    print(f"Running {num_iterations} iterations...")
+    start_time = time.time()
+    
+    for i in range(num_iterations):
+        observation = create_sample_observation_soarm100(format='tensor', device=device)
+        with torch.inference_mode():
+            action = policy.select_action(observation)
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+    avg_time = total_time / num_iterations
+    fps = num_iterations / total_time
+    
+    print(f"✅ Local inference completed:")
+    print(f"   Total time: {total_time:.3f}s")
+    print(f"   Average time per inference: {avg_time*1000:.1f}ms")
+    print(f"   FPS: {fps:.1f}")
+    print(f"   Action shape: {action.shape}")
+    
+    return total_time, avg_time, fps
+
+
+def remote_inference_test(num_iterations: int = 100):
+    """Test remote inference speed via WebSocket"""
+    print(f"🌐 Remote Inference Test (WebSocket + MessagePack)")
+    print("-" * 55)
+    
+    try:
+        with SyncLeRobotClient() as client:
+            print("✅ Connected to remote server")
+            
+            # Reset environment
+            client.reset()
+            
+            # Warmup
+            print("Warming up...")
+            for _ in range(5):
+                observation = create_sample_observation_soarm100(format='numpy')  # Send as numpy for efficiency
+                _ = client.select_action(observation)
+            
+            # Actual test
+            print(f"Running {num_iterations} iterations...")
+            start_time = time.time()
+            
+            for i in range(num_iterations):
+                observation = create_sample_observation_soarm100(format='numpy')
+                action = client.select_action(observation)
+            
+            end_time = time.time()
+            total_time = end_time - start_time
+            avg_time = total_time / num_iterations
+            fps = num_iterations / total_time
+            
+            print(f"✅ Remote inference completed:")
+            print(f"   Total time: {total_time:.3f}s")
+            print(f"   Average time per inference: {avg_time*1000:.1f}ms")
+            print(f"   FPS: {fps:.1f}")
+            print(f"   Action shape: {action.shape}")
+            print(f"   Network overhead: {avg_time*1000:.1f}ms per call")
+            
+            return total_time, avg_time, fps
+            
+    except Exception as e:
+        print(f"❌ Remote inference failed: {e}")
+        print("   Make sure websocket_server_robot.py is running")
+        return None, None, None
+
+
+def compare_inference_methods(num_iterations: int = 100):
+    """Compare local vs remote inference performance"""
+    print("🔬 Performance Comparison")
+    print("=" * 50)
+    print()
+    
+    # Test local inference
+    local_total, local_avg, local_fps = local_inference_test(num_iterations)
+    print()
+    
+    # Test remote inference  
+    remote_total, remote_avg, remote_fps = remote_inference_test(num_iterations)
+    print()
+    
+    # Compare results
+    if remote_total is not None:
+        print("📊 Comparison Results:")
+        print("-" * 25)
+        overhead = (remote_avg - local_avg) * 1000
+        slowdown = remote_avg / local_avg
         
-        # Reset environment
-        client.reset()
-        print("✅ Environment reset")
+        print(f"Local avg:     {local_avg*1000:.1f}ms ({local_fps:.1f} FPS)")
+        print(f"Remote avg:    {remote_avg*1000:.1f}ms ({remote_fps:.1f} FPS)")
+        print(f"Overhead:      +{overhead:.1f}ms per call")
+        print(f"Slowdown:      {slowdown:.1f}x slower")
+        print()
         
-        # Get action from observation
-        #observation = create_sample_observation_aloha()
-        observation = create_sample_observation_soarm100()
-        # print_observation_shape(observation)
-        # import pdb; pdb.set_trace()
-        action = client.select_action(observation)
-        print(f"✅ Received action: shape={action.shape}")
-        print(f"   Action range: [{action.min():.3f}, {action.max():.3f}]")
-        print(f"   Action: {action}")
+        # Data transfer estimate
+        obs = create_sample_observation_soarm100(format='numpy')
+        total_data_mb = 0
+        for key, value in obs.items():
+            if isinstance(value, np.ndarray):
+                total_data_mb += value.nbytes / (1024 * 1024)
         
-        # You can call select_action multiple times
-        start_time = time()
-        for i in range(100):
-            # Update your observation here...
-            #observation = create_sample_observation_aloha()  # Replace with real observation
-            observation = create_sample_observation_soarm100()
-            # print_observation_shape(observation)
-            action = client.select_action(observation)
-            # print(f"   Step {i+1}: action shape {action.shape}")
-            # print(f"   Action: {action}")
-        end_time = time()
-        print(f"Time taken: {end_time - start_time} seconds")
+        print(f"📦 Data Transfer per call:")
+        print(f"   Observation size: ~{total_data_mb:.1f}MB")
+        print(f"   Est. bandwidth: ~{total_data_mb * remote_fps:.1f}MB/s @ {remote_fps:.1f} FPS")
+        
+        # Recommendations
+        print()
+        print("💡 Recommendations:")
+        if overhead < 50:
+            print("   ✅ Low latency - suitable for real-time control")
+        elif overhead < 100:
+            print("   ⚠️  Medium latency - acceptable for most robotics tasks")
+        else:
+            print("   ❌ High latency - consider local inference for real-time tasks")
+    
+    print()
+    print("🏁 Test completed!")
+
 
 if __name__ == "__main__":
-    local_inference_dummy_input()
-    remote_inference_dummy_input()
+    # You can adjust the number of iterations
+    compare_inference_methods(num_iterations=100)
 
 
 
