@@ -68,7 +68,7 @@ python eval_simulation.py \
 
 First, copy the config files:
 ```
-cp -r /Users/danqingzhang/lerobot/.cache /Users/danqingzhang/Desktop/learning/awesome-lerobot/inference/
+cp -r /Users/danqingzhang/lerobot/.cache /Users/danqingzhang/Desktop/learning/awesome-lerobot/remote-inference/
 ```
 then
 ```

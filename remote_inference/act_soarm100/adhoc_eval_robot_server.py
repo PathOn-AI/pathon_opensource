@@ -155,49 +155,81 @@ robot.connect()
 output_dir = "/Users/danqingzhang/Desktop/learning/awesome-lerobot/inference/act_soarm100/images/"
 os.makedirs(output_dir, exist_ok=True)
 
-# Main inference loop
-for step in range(inference_time_s * fps):
-    start_time = time.perf_counter()
-    observation = robot.capture_observation()
-    
-    # Save images
-    image = observation['observation.images.phone']
-    np_image = np.array(image)
-    np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(os.path.join(output_dir, f"image_phone_{step}.jpg"), np_image)
-    
-    image = observation['observation.images.on_robot']
-    np_image = np.array(image)
-    np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(os.path.join(output_dir, f"image_on_robot_{step}.jpg"), np_image)
-    
-    print(f"Step {step}")
-    
-    # Process observation
-    for name in observation:
-        if "image" in name:
-            observation[name] = observation[name].type(torch.float32) / 255
-            observation[name] = observation[name].permute(2, 0, 1).contiguous()
-        observation[name] = observation[name].unsqueeze(0)
-        observation[name] = observation[name].numpy()
-        print(name, observation[name].shape)
+# Initialize client connection ONCE outside the loop
+client = SyncLeRobotClient()
+client.connect()
+logging.info("✅ LeRobot client connected and ready")
 
-    # Get action with rate limiting
-    def get_action():
-        with SyncLeRobotClient() as client:
+try:
+    # Main inference loop
+    for step in range(inference_time_s * fps):
+        start_time = time.perf_counter()
+        observation = robot.capture_observation()
+        
+        # Save images
+        image = observation['observation.images.phone']
+        np_image = np.array(image)
+        np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(output_dir, f"image_phone_{step}.jpg"), np_image)
+        
+        image = observation['observation.images.on_robot']
+        np_image = np.array(image)
+        np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(output_dir, f"image_on_robot_{step}.jpg"), np_image)
+        
+        print(f"Step {step}")
+        
+        # Process observation
+        for name in observation:
+            if "image" in name:
+                observation[name] = observation[name].type(torch.float32) / 255
+                observation[name] = observation[name].permute(2, 0, 1).contiguous()
+            observation[name] = observation[name].unsqueeze(0)
+            observation[name] = observation[name].numpy()
+            print(name, observation[name].shape)
+
+        # Get action with rate limiting (reusing existing connection)
+        def get_action():
             return client.select_action(observation)
+        
+        try:
+            action = rate_handler.execute_with_backoff(get_action)
+            action = torch.from_numpy(action)
+            action = action.squeeze(0)
+            robot.send_action(action)
+            
+        except Exception as e:
+            logging.error(f"Failed to get action at step {step}: {e}")
+            
+            # Try to reconnect if it seems like a connection error
+            error_str = str(e).lower()
+            if any(keyword in error_str for keyword in ["connection", "websocket", "disconnected"]):
+                logging.info("Attempting to reconnect client...")
+                try:
+                    client.disconnect()
+                    time.sleep(1)  # Brief pause before reconnecting
+                    client.connect()
+                    logging.info("✅ Client reconnected successfully")
+                except Exception as reconnect_error:
+                    logging.error(f"Failed to reconnect: {reconnect_error}")
+            
+            # Skip this step and continue
+            continue
+
+        dt_s = time.perf_counter() - start_time
+        busy_wait(1 / fps - dt_s)
+
+finally:
+    # Clean up connections
+    logging.info("Cleaning up connections...")
+    try:
+        client.disconnect()
+        logging.info("✅ LeRobot client disconnected")
+    except Exception as e:
+        logging.warning(f"Error during client cleanup: {e}")
     
     try:
-        action = rate_handler.execute_with_backoff(get_action)
-        action = torch.from_numpy(action)
-        action = action.squeeze(0)
-        robot.send_action(action)
-        
+        robot.disconnect()
+        logging.info("✅ Robot disconnected")
     except Exception as e:
-        logging.error(f"Failed to get action at step {step}: {e}")
-        # You might want to implement fallback behavior here
-        # For now, we'll skip this step and continue
-        continue
-
-    dt_s = time.perf_counter() - start_time
-    busy_wait(1 / fps - dt_s)
+        logging.warning(f"Error during robot cleanup: {e}")

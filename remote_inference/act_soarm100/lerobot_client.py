@@ -8,6 +8,7 @@ import threading
 import logging
 from typing import Dict, Any, Optional
 from msgpack_utils import packb, unpackb
+from time import time
 
 
 class LeRobotClientError(Exception):
@@ -16,7 +17,7 @@ class LeRobotClientError(Exception):
 
 class LeRobotClient:
     def __init__(self, uri: str, max_message_size: int = 100 * 1024 * 1024, timeout: float = 30.0):
-        self.uri = "ws://6.tcp.us-cal-1.ngrok.io:16363" if uri is None else uri
+        self.uri = "ws://localhost:8766" if uri is None else uri
         self.max_message_size = max_message_size
         self.timeout = timeout
         self._websocket: Optional[websockets.WebSocketServerProtocol] = None
@@ -105,7 +106,7 @@ class LeRobotClient:
         
         message = {"type": "select_action", "observation": observation}
         response = await self._send_message(message)
-        
+
         if response.get("type") == "action_response":
             action = response["action"]
             self.logger.debug(f"Received action with shape: {action.shape}")
