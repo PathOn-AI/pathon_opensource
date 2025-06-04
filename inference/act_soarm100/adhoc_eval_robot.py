@@ -3,6 +3,7 @@ import time
 import torch
 import cv2
 import numpy as np
+import os
 
 from lerobot.common.policies.act.modeling_act import ACTPolicy
 from lerobot.common.robot_devices.utils import busy_wait
@@ -16,6 +17,9 @@ device = "mps"
 policy = ACTPolicy.from_pretrained("DanqingZ/act_so100_filtered_yellow_cuboid")
 policy.to(device)
 
+# Create directory if it doesn't exist
+output_dir = "/Users/danqingzhang/Desktop/learning/awesome-lerobot/inference/act_soarm100/images/"
+os.makedirs(output_dir, exist_ok=True)
 
 robot = make_robot("so100")
 robot.connect()
@@ -26,6 +30,14 @@ for step in range(inference_time_s * fps):
 
     # Read the follower state and access the frames from the cameras
     observation = robot.capture_observation()
+    image = observation['observation.images.phone']
+    np_image = np.array(image)
+    np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(os.path.join(output_dir, f"image_phone_{step}.jpg"), np_image)
+    image = observation['observation.images.on_robot']
+    np_image = np.array(image)
+    np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(os.path.join(output_dir, f"image_on_robot_{step}.jpg"), np_image)
 
     print(step)
     for name in observation:

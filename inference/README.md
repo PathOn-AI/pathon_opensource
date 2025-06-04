@@ -64,11 +64,15 @@ python eval_simulation.py \
 - Monitor GPU memory usage during inference to ensure optimal performance
 
 
-## 2. Eval Model on Robot (so-arm100)
+## 2. Eval ACT Model on Robot (so-arm100)
 
 First, copy the config files:
 ```
 cp -r /Users/danqingzhang/lerobot/.cache /Users/danqingzhang/Desktop/learning/awesome-lerobot/inference/
+```
+then
+```
+cd act_soarm100
 ```
 
 ### Local Test

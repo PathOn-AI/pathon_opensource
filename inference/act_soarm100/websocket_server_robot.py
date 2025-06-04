@@ -31,31 +31,6 @@ from lerobot.common.robot_devices.robots.utils import make_robot
 import torch
 
 
-
-# def convert_nested_to_flat_observation(nested_observation, device):
-#     flat_observation = {}
-    
-#     for key, value in nested_observation.items():    
-#         print(f"key: {key}")
-#         if isinstance(value, dict):
-#             # Handle nested dictionaries
-#             for subkey, subvalue in value.items():
-#                 flat_key = f'observation.{key}.{subkey}'
-#                 subvalue = torch.from_numpy(subvalue)
-#                 flat_observation[flat_key] = subvalue
-#                 flat_observation[flat_key] = flat_observation[flat_key].to(device)
-#         else:
-#             # Handle simple values
-#             flat_key = f'observation.{key}'
-#             print(f"flat_key: {flat_key}")
-            
-#             # for key, value in flat_observation.items():
-#             value = torch.from_numpy(value)
-#             flat_observation[flat_key] = value
-#             flat_observation[flat_key] = flat_observation[flat_key].to(device)
-    
-#     return flat_observation
-
 def convert_observation(observation, device):
     flat_observation = {}
     for key, value in observation.items():
