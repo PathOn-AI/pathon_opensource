@@ -36,4 +36,6 @@ TODO: Need to speed up the inference. Use MessagePack instead of JSON + Pickle.
 
 
 ## 2. Eval pi0
-![Video Description](pi0_soarm100/on_robot.mp4) 
+<iframe width="560" height="315" src="https://www.youtube.com/embed/Fuf9Kqy5tpk" 
+frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+allowfullscreen></iframe>
