@@ -36,4 +36,4 @@ TODO: Need to speed up the inference. Use MessagePack instead of JSON + Pickle.
 
 
 ## 2. Eval pi0
-![Video Description](on_robot.mp4) 
+![Video Description](pi0_soarm100/on_robot.mp4) 
