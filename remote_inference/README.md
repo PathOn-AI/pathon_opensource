@@ -27,12 +27,11 @@ then establish port forwarding like
 ssh -i ~/.ssh/id_donnager -p 2022 -L 8765:localhost:8765 ib@donnager -N
 ```
 
-On MacBook, run:
+### On MacBook
+run:
 ```
 python adhoc_eval_robot_act.py
 ```
-
-TODO: Need to speed up the inference. Use MessagePack instead of JSON + Pickle.
 
 
 ## 2. Eval pi0
@@ -49,10 +48,28 @@ then establish port forwarding like
 ssh -i ~/.ssh/id_donnager -p 2022 -L 8765:localhost:8765 ib@donnager -N
 ```
 
-On MacBook, run:
+### On MacBook
+run:
 ```
 python adhoc_eval_robot_pi0.py
 ```
 
-TODO: Need to speed up the inference. Use MessagePack instead of JSON + Pickle.
+## 3. Eval SmolVLA
+### Run Inference on the Server
+
+On the server, run:
+```
+python websocket_server_smolvla.py
+```
+then establish port forwarding like
+```
+ssh -i ~/.ssh/id_donnager -p 2022 -L 8765:localhost:8765 ib@donnager -N
+```
+
+### On MacBook
+run:
+```
+python adhoc_eval_robot_smolvla.py
+```
+
 
