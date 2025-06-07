@@ -62,6 +62,8 @@ On the server, run:
 python websocket_server_smolvla.py
 ```
 then establish port forwarding like
+
+note you will need to change n_action_steps from 1 to 50 in your model configs in order to speed up the inference:https://huggingface.co/DanqingZ/smolvla_so100_filtered_yellow_cuboid_40000_steps/blob/main/config.json
 ```
 ssh -i ~/.ssh/id_donnager -p 2022 -L 8765:localhost:8765 ib@donnager -N
 ```
