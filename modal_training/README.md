@@ -100,7 +100,7 @@ modal run -d lerobot_finetune.py --dataset-repo-id="DanqingZ/filtered_pick_yello
 
 For a complete fine-tuning of smolvla on So-Arm100 data:
 ```bash
-modal run -d lerobot_finetune.py --dataset-repo-id="DanqingZ/filtered_pick_yellow_pink" --model-id="lerobot/smolvla_base" --gpu-type="H100" --policy-name="pi0_pick_yellow_pink" --save-freq=200000 --log-freq=100 --batch-size=64 --steps=20000
+modal run -d lerobot_finetune.py --dataset-repo-id="DanqingZ/filtered_pick_yellow_pink" --model-id="lerobot/smolvla_base" --gpu-type="H100" --policy-name="smolvla_pick_yellow_pink" --save-freq=200000 --log-freq=100 --batch-size=64 --steps=20000
 ```
 
 
