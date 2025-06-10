@@ -1,5 +1,7 @@
 # awesome-lerobot
 
+Step-by-step tutorial at https://learn-robotics.pathon.ai/
+
 ## 1. Open-Source Hardware
 
 | **Platform** | **Type** | **Description** | **Repository** |
