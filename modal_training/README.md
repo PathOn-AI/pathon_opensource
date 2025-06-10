@@ -68,27 +68,61 @@ modal secret create hf-name-secret HF_NAME=your_huggingface_user_name_here
 
 ## 5. Usage
 
-### 5.1 Get started with pi0 finetuning
+### 5.1 Fine-tuning Pre-trained Models
 
-To start training your Pi0 model:
-
-```bash
-modal run lerobot_pi0.py
-```
-
-By the end of training, you can access the Weights & Biases training log and have the final model saved to your Hugging Face account.
-
-Please note that this script:
-- **Training Duration**: The script runs for 20 steps by default.
-- **Timeout**: The training timeout is set to 1 hour (default is 5 minutes). You can change the timeout in the code.
-- **Cost**: Expect to spend less than $1 for a complete run.
-- **Data**: Uses LeRobot example data for fine-tuning.
-
-### 5.2 Complete Pi0 run
-
-For a long-running training job, try running in detached mode and change the timeout. Run the script below to finetune pi0 on one of the datasets collected from so-arm100:
+To fine-tune an existing pre-trained model (like Pi0):
 
 ```bash
-modal run -d lerobot_pi0.py
+modal run -d lerobot_finetune.py --dataset-repo-id="danaaubakirova/koch_test" --model-id="lerobot/pi0" --gpu-type="A100" --policy-name="modal_pi0_test" --save-freq=100000 --steps=20 --log-freq=5
 ```
-Cost estimate: $3.74 spent for 10k steps, fine-tuning Pi0 on an H100.
+
+This uses `--policy.path` under the hood:
+```bash
+python lerobot/scripts/train.py \
+--policy.path=lerobot/pi0 \
+--dataset.repo_id=danaaubakirova/koch_test
+```
+
+**Quick Test Notes:**
+- **Training Duration**: 20 steps for testing
+- **Timeout**: 1 hour default
+- **Cost**: < $1 for a test run
+- **Data**: Uses LeRobot example data
+
+### 5.2 Production Fine-tuning
+
+For a complete fine-tuning run on So-Arm100 data:
+
+```bash
+modal run -d lerobot_finetune.py --dataset-repo-id="DanqingZ/filtered_pick_yellow_pink" --model-id="lerobot/pi0" --gpu-type="H100" --policy-name="pi0_pick_yellow_pink" --save-freq=200000 --log-freq=100
+```
+
+**Cost estimate:** ~$50 for 100k steps on H100
+
+### 5.3 Training from Scratch
+
+To train a model from scratch (e.g., ACT), use the `--policy-type` flag:
+
+```bash
+modal run -d lerobot_finetune.py --dataset-repo-id="DanqingZ/filtered_pick_pink" --model-id="act" --gpu-type="A100" --policy-name="act_pick_pink" --save-freq=200000 --log-freq=100 --policy-type
+```
+
+This uses `--policy.type` under the hood:
+```bash
+python lerobot/scripts/train.py \
+--policy.type=act \
+--dataset.repo_id=DanqingZ/filtered_pick_pink \
+--job_name=act_pick_pink
+```
+
+### 5.4 Parameter Explanation
+
+| Parameter | Description | Fine-tuning | From Scratch |
+|-----------|-------------|-------------|--------------|
+| `--policy-type` | Training mode flag | Not used | Required |
+| `--model-id` | Model identifier | Pre-trained path (e.g., `lerobot/pi0`) | Policy type (e.g., `act`) |
+| `--policy-name` | Output model name | Repository name | Job name |
+
+**Key Differences:**
+- **Fine-tuning** (default): Uses existing weights from a pre-trained model
+- **From scratch** (`--policy-type`): Trains a new model with random initialization
