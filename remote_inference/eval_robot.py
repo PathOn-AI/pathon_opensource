@@ -1,13 +1,16 @@
+#!/usr/bin/env python
+
 import time
 import logging
 import asyncio
+import argparse
 
 import torch
 import cv2
 import numpy as np
 import os
 
-from lerobot.common.policies.act.modeling_act import ACTPolicy
+# No need to import policies - handled by remote server
 from lerobot.common.robot_devices.utils import busy_wait
 from lerobot.common.robot_devices.robots.utils import make_robot
 from lerobot_client import LeRobotClient
@@ -16,27 +19,20 @@ import os
 import shutil
 
 
-async def run_inference():
+async def run_inference(task: str = None, 
+                       inference_time_s: int = 30, fps: int = 25, device: str = "mps",
+                       robot_type: str = "so100", output_dir: str = "images/",
+                       websocket_url: str = "ws://localhost:8765"):
     """Main async inference function."""
-    # Configuration
-    inference_time_s = 30
-    fps = 25
-    device = "mps" 
-
+    
     # Setup logging
     logging.basicConfig(level=logging.INFO)
 
-    # Initialize policy and robot
-    # replace with your own model
-    policy = ACTPolicy.from_pretrained("DanqingZ/act_so100_filtered_yellow_cuboid")
-    policy.to(device)
-
-    robot = make_robot("so100")
+    # Initialize robot (policy is handled by remote WebSocket server)
+    robot = make_robot(robot_type)
     robot.connect()
 
-    output_dir = "images/"
-
-    # Remove the entire directory if it exists, then create fresh
+    # Setup output directory
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir)
@@ -48,7 +44,7 @@ async def run_inference():
     start_overall = time.perf_counter()
 
     # Use async context manager for LeRobotClient
-    async with LeRobotClient("ws://localhost:8765") as client:
+    async with LeRobotClient(websocket_url) as client:
         logging.info("✅ LeRobot client connected and ready")
         
         try:
@@ -76,6 +72,10 @@ async def run_inference():
                     observation[name] = observation[name].numpy()
                     print(name, observation[name].shape)
 
+                # Add task if specified (needed for PI0 and SmolVLA models)
+                if task:
+                    observation["task"] = [task]
+                    
                 print('Done processing observation:', datetime.now().strftime("%A, %B %d, %Y at %H:%M:%S.%f")[:-3])
                 
                 try:
@@ -166,8 +166,34 @@ async def run_inference():
 
 def main():
     """Entry point that runs the async inference."""
+    parser = argparse.ArgumentParser(description="Run robot evaluation with remote WebSocket server")
+    parser.add_argument("--task", 
+                       help="Task description (required for certain models like PI0 and SmolVLA)")
+    parser.add_argument("--inference-time", type=int, default=30,
+                       help="Inference time in seconds (default: 30)")
+    parser.add_argument("--fps", type=int, default=25,
+                       help="Frames per second (default: 25)")
+    parser.add_argument("--device", default="mps",
+                       help="Device to use (default: mps)")
+    parser.add_argument("--robot-type", default="so100",
+                       help="Robot type (default: so100)")
+    parser.add_argument("--output-dir", default="images/",
+                       help="Output directory for images (default: images/)")
+    parser.add_argument("--websocket-url", default="ws://localhost:8765",
+                       help="WebSocket server URL (default: ws://localhost:8765)")
+    
+    args = parser.parse_args()
+    
     try:
-        asyncio.run(run_inference())
+        asyncio.run(run_inference(
+            task=args.task,
+            inference_time_s=args.inference_time,
+            fps=args.fps,
+            device=args.device,
+            robot_type=args.robot_type,
+            output_dir=args.output_dir,
+            websocket_url=args.websocket_url
+        ))
     except KeyboardInterrupt:
         logging.info("Inference interrupted by user")
     except Exception as e:

@@ -7,21 +7,29 @@ from time import time
 import torch
 import websockets
 from websockets.server import WebSocketServerProtocol
-from lerobot.common.policies.pretrained import PreTrainedPolicy
-from lerobot.common.policies.act.modeling_act import ACTPolicy
-from msgpack_utils import packb, unpackb
-from datetime import datetime
+import argparse
+
 from lerobot.common.policies.pretrained import PreTrainedPolicy
 from lerobot.common.policies.act.modeling_act import ACTPolicy
 from lerobot.common.policies.pi0.modeling_pi0 import PI0Policy
 from lerobot.common.policies.smolvla.modeling_smolvla import SmolVLAPolicy
-import numpy as np
-import torch
-from collections import OrderedDict
-from typing import Literal
-from lerobot_client import LeRobotClient
-from lerobot.common.policies.act.modeling_act import ACTPolicy
+from msgpack_utils import packb, unpackb
 from datetime import datetime
+
+
+def get_policy_class(model_type: str):
+    """Get the appropriate policy class based on model type."""
+    model_classes = {
+        'act': ACTPolicy,
+        'pi0': PI0Policy,
+        'smolvla': SmolVLAPolicy
+    }
+    
+    if model_type.lower() not in model_classes:
+        raise ValueError(f"Unknown model type: {model_type}. Available: {list(model_classes.keys())}")
+    
+    return model_classes[model_type.lower()]
+
 
 def convert_observation(observation, device):
     flat_observation = {}
@@ -67,6 +75,7 @@ class PolicyWebSocketServer:
                 duration_ms = duration * 1000
                 # print(f"Time taken to convert observation: {duration_ms} ms")
                 start_time = time()
+
                 with torch.inference_mode():
                     action = self.policy.select_action(observation)
                 print('Inference Time:', datetime.now().strftime("%A, %B %d, %Y at %H:%M:%S.%f")[:-3])
@@ -112,22 +121,39 @@ class PolicyWebSocketServer:
             await asyncio.Future()
 
 
-def create_policy_server() -> PolicyWebSocketServer:
-    device = "cuda"
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cuda.matmul.allow_tf32 = True
+def create_policy_server(model_type: str, model_path: str, device: str = "cuda") -> PolicyWebSocketServer:
+    """Create a policy server with the specified model type and path."""
+    if device == "cuda":
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_tf32 = True
     
-    # policy = ACTPolicy.from_pretrained("DanqingZ/act_so100_filtered_yellow_cuboid")
-    # policy = PI0Policy.from_pretrained("DanqingZ/pi0_so100_test_yellow_cuboid_2_20250603_102352")
-    policy = SmolVLAPolicy.from_pretrained("DanqingZ/smolvla_so100_filtered_yellow_cuboid_20000_steps")
+    # Get the appropriate policy class and load the model
+    PolicyClass = get_policy_class(model_type)
+    policy = PolicyClass.from_pretrained(model_path)
     policy.to(device)
     
     return PolicyWebSocketServer(policy, device, max_size=100 * 1024 * 1024)
 
 
 async def main():
-    server = create_policy_server()
-    await server.start_server('0.0.0.0', 8765)
+    """Main function that parses arguments and starts the server."""
+    parser = argparse.ArgumentParser(description="Run WebSocket server for different robot policies")
+    parser.add_argument("--model-type", required=True, choices=['act', 'pi0', 'smolvla'], 
+                       help="Type of model to use")
+    parser.add_argument("--model-path", required=True, 
+                       help="Path or name of the pretrained model")
+    parser.add_argument("--device", default="cuda",
+                       help="Device to use (default: cuda)")
+    parser.add_argument("--host", default="0.0.0.0",
+                       help="Host to bind to (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8765,
+                       help="Port to bind to (default: 8765)")
+    
+    args = parser.parse_args()
+    
+    logging.info(f"Creating {args.model_type} policy server with model: {args.model_path}")
+    server = create_policy_server(args.model_type, args.model_path, args.device)
+    await server.start_server(args.host, args.port)
 
 
 if __name__ == "__main__":

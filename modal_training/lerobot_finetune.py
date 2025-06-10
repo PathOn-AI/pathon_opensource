@@ -15,6 +15,7 @@ image = (
         'cd /lerobot && pip install -e ".[smolvla]"',
         "pip uninstall -y transformers",
         "pip install transformers==4.51.3",
+        "pip install scipy",
         "pip install wandb pytest"
     )
 )
