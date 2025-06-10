@@ -16,7 +16,7 @@ cp -r /Users/danqingzhang/lerobot/.cache /Users/danqingzhang/Desktop/learning/aw
 
 
 
-## Model Evaluation with Inference Server on Nvidia RTX 3090
+## Model Evaluation with Inference Server on Nvidia RTX 3090 Locally
 ### SSH Tunnel Setup
 For all models, set up the SSH tunnel between server and MacBook:
 ```bash
@@ -75,7 +75,7 @@ python eval_robot.py \
 ```bash
 python websocket_server.py \
   --model-type pi0 \
-  --model-path "/home/ib/models/pi0_0610_pick_yellow_pink" \
+  --model-path "DanqingZ/pi0_0610_pick_yellow_pink" \
   --device cuda \
   --host 0.0.0.0 \
   --port 8765
@@ -92,41 +92,30 @@ python eval_robot.py \
   --output-dir images/
 ```
 
-## Model Evaluation with Inference Server on Nvidia RTX 3090
 
-# Usage Examples
+### 4. Pi0-fast Model
 
-## Local WebSocket Server
-
-### Start ACT model server locally
+**Server side:**
 ```bash
 python websocket_server.py \
-  --model-type act \
-  --model-path "DanqingZ/act_so100_filtered_yellow_cuboid" \
+  --model-type pi0fast \
+  --model-path "DanqingZ/pi0_fast_0610_pick_yellow_pink" \
   --device cuda \
   --host 0.0.0.0 \
   --port 8765
 ```
 
-### Start PI0 model server locally
+**MacBook side:**
 ```bash
-python websocket_server.py \
-  --model-type pi0 \
-  --model-path "DanqingZ/pi0_0610_pick_yellow_pink" \
-  --device cuda \
-  --host 0.0.0.0 \
-  --port 8765
+python eval_robot.py \
+  --task "Grasp the yellow cuboid and put it in the bin." \
+  --inference-time 30 \
+  --fps 25 \
+  --device mps \
+  --robot-type so100 \
+  --output-dir images/
 ```
 
-### Start SmolVLA model server locally
-```bash
-python websocket_server.py \
-  --model-type smolvla \
-  --model-path "DanqingZ/smolvla_so100_filtered_yellow_cuboid_20000_steps" \
-  --device cuda \
-  --host 0.0.0.0 \
-  --port 8765
-```
 
 ## Modal Deployment
 coming soon!

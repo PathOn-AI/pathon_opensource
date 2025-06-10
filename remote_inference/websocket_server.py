@@ -13,6 +13,7 @@ from lerobot.common.policies.pretrained import PreTrainedPolicy
 from lerobot.common.policies.act.modeling_act import ACTPolicy
 from lerobot.common.policies.pi0.modeling_pi0 import PI0Policy
 from lerobot.common.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+from lerobot.common.policies.pi0fast.modeling_pi0fast import PI0FASTPolicy
 from msgpack_utils import packb, unpackb
 from datetime import datetime
 
@@ -22,7 +23,8 @@ def get_policy_class(model_type: str):
     model_classes = {
         'act': ACTPolicy,
         'pi0': PI0Policy,
-        'smolvla': SmolVLAPolicy
+        'smolvla': SmolVLAPolicy,
+        'pi0fast': PI0FASTPolicy
     }
     
     if model_type.lower() not in model_classes:
@@ -138,7 +140,7 @@ def create_policy_server(model_type: str, model_path: str, device: str = "cuda")
 async def main():
     """Main function that parses arguments and starts the server."""
     parser = argparse.ArgumentParser(description="Run WebSocket server for different robot policies")
-    parser.add_argument("--model-type", required=True, choices=['act', 'pi0', 'smolvla'], 
+    parser.add_argument("--model-type", required=True, choices=['act', 'pi0', 'smolvla', 'pi0fast'], 
                        help="Type of model to use")
     parser.add_argument("--model-path", required=True, 
                        help="Path or name of the pretrained model")
