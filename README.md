@@ -2,6 +2,12 @@
 
 Step-by-step tutorial at https://learn-robotics.pathon.ai/
 
+## Tutorials:
+* **General Introduction to SO-ARM100 and LeRobot**: https://learn-robotics.pathon.ai/blog/soarm100
+* **Using LeRobot in Simulation Environment**: https://learn-robotics.pathon.ai/blog/simulation
+* **Control the Open-Source Robot Arm with ACT (Action Chunking with Transformers) Using LeRobot**: https://learn-robotics.pathon.ai/blog/lerobot_act
+* **Control the Open-Source Robot Arm with Pi0 Using LeRobot**: https://learn-robotics.pathon.ai/blog/lerobot_pi0
+
 ## 1. Open-Source Hardware
 
 | **Platform** | **Type** | **Description** | **Repository** |
@@ -27,9 +33,13 @@ Step-by-step tutorial at https://learn-robotics.pathon.ai/
 ### 2.2 VLA
 https://github.com/DelinQu/awesome-vision-language-action-model
 
-## 3. Data Collection, Teleoperation
+## 3. Data Collection & Teleoperation
 ### 3.1 Teleoperation
-* https://github.com/box2ai-robotics/joycon-robotics
+There are different ways to teleoperate the follower arm
+* in lerobot package, the official way is to use a leader arm to control the follower arm
+* there are other ways to control the follower arm, like
+    * using joycon: https://github.com/box2ai-robotics/joycon-robotics
+    * using VR like meta quest 3: https://github.com/DipFlip/telegrip
 
 
 ### 3.2 Dataset
