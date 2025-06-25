@@ -53,3 +53,7 @@ There are different ways to teleoperate the follower arm
 ## 4. Simulation
 * sim2real: https://github.com/StoneT2000/lerobot-sim2real
 * digital twin: https://github.com/LiZhYun/BiLerobot
+* isaac lab
+    * https://www.youtube.com/live/z7KdHGkUTNE
+    * https://medium.com/@kabilankb2003/setting-up-lerobot-using-api-standalone-method-in-nvidia-isaac-sim-f2b57164b0f2
+    * https://medium.com/@kabilankb2003/training-so-100-robot-for-cube-lifting-in-isaac-lab-from-simulation-to-intelligent-control-with-9e81f94c6d6e
