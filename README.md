@@ -50,6 +50,6 @@ There are different ways to teleoperate the follower arm
     * data manipulation
     * delete episode, combine dataset
 
-## 4. Train a Policy with imitation learning and Evaluate a Policy on the Robot
-
-## 5. Train a Policy in the simulated environment and evaluate the policy in the simulation environment
+## 4. Simulation
+* sim2real: https://github.com/StoneT2000/lerobot-sim2real
+* digital twin: https://github.com/LiZhYun/BiLerobot
