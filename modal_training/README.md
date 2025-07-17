@@ -66,6 +66,16 @@ modal secret create hf-secret HF_TOKEN=your_huggingface_token_here
 modal secret create hf-name-secret HF_NAME=your_huggingface_user_name_here
 ```
 
+If you need to delete a secret, run:
+```bash
+modal secret delete wandb-secret
+```
+
+you can run below command line to show all configured modal screts
+```bash
+modal secret list
+```
+
 ## 5. Usage
 
 ### 5.1 Fine-tuning Pre-trained Models
