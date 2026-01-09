@@ -1,5 +1,7 @@
 # awesome-lerobot
 
+> **Note:** Major modifications to this repository are planned for January 2026, developed by the PathOnAI open source team.
+
 Step-by-step tutorial at https://learn-robotics.pathon.ai/
 
 ## Tutorials:
