@@ -1,5 +1,9 @@
 # SO-101 6DoF + Symmetric Gripper
 
+[![discord-badge](https://dcbadge.limes.pink/api/server/xukJ3nh9wC)](https://discord.gg/xukJ3nh9wC)
+[![followers](https://custom-icon-badges.demolab.com/github/followers/PathOn-AI?color=236ad3&labelColor=1155ba&style=for-the-badge&logo=person-add&label=Follow&logoColor=white)](https://github.com/PathOn-AI?tab=followers)
+[![stars](https://custom-icon-badges.demolab.com/github/stars/PathOn-AI/pathon_opensource?color=55960c&style=for-the-badge&labelColor=488207&logo=star)](https://github.com/PathOn-AI/pathon_opensource/stargazers)
+
 An upgrade kit for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robotic arm, adding a 6th degree of freedom (wrist pitch + yaw) and a symmetric parallel-jaw gripper. The 6DoF wrist enables the arm to approach objects from any angle, and the symmetric gripper provides balanced grasping force -- together enabling seamless integration with state-of-the-art grasp generation models and making it easier to grasp objects reliably.
 
 ![Assembled SO-101 6DoF with symmetric gripper](media/images/assembled.png)
