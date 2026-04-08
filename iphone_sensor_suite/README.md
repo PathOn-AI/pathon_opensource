@@ -23,7 +23,7 @@ Download the free iOS streaming app:
   <img src="images/app_streaming.png" alt="iOS app streaming" width="250">
 </p>
 
-*Left: app ready to stream. Right: streaming at 30fps with 1 client connected.*
+<p align="center"><em>Left: app ready to stream. Right: streaming at 30fps with 1 client connected.</em></p>
 
 ## Overview
 
