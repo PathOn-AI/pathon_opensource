@@ -1,5 +1,27 @@
 # Hardware -- Assembly Guide
 
+## Bill of Materials
+
+### 6DoF Wrist Upgrade BOM
+
+| # | Part | Qty | Source |
+|---|------|-----|--------|
+| 1 | STS3215 servo | 1 | Purchased |
+| 2 | link_pitch | 1 | 3D printed |
+| 3 | link_yaw | 1 | 3D printed |
+
+### Symmetric Gripper BOM
+
+| # | Part | Qty | Source |
+|---|------|-----|--------|
+| 1 | STS3215 servo | 1 | Purchased |
+| 2 | frame | 1 | 3D printed |
+| 3 | cam | 1 | 3D printed |
+| 4 | rack_up | 1 | 3D printed |
+| 5 | rack_down | 1 | 3D printed |
+| 6 | l_gripper | 1 | 3D printed |
+| 7 | r_gripper | 1 | 3D printed |
+
 ## 3D Printed Parts
 
 All parts can be printed with standard PLA/PETG filament. STL files are for slicing, STEP files are provided for modification.
@@ -38,4 +60,4 @@ All parts can be printed with standard PLA/PETG filament. STL files are for slic
 3. Attach l_gripper and r_gripper to the respective racks
 4. Mount the assembled gripper onto the wrist yaw link
 
-> Assembly video coming soon.
+> Assembly Steps coming soon.
