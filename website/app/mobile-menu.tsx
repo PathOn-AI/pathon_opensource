@@ -42,6 +42,13 @@ export function MobileMenu() {
             >
               Robots
             </Link>
+            <Link
+              href="/tools/pointcloud-viewer"
+              className="block text-lg font-semibold text-gray-700 hover:text-green-600"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Tools
+            </Link>
             {/* Social Icons */}
             <div className="flex items-center gap-5 pt-2">
               <a href="https://github.com/PathOn-AI" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-green-600" aria-label="GitHub"><FaGithub className="h-5 w-5" /></a>
