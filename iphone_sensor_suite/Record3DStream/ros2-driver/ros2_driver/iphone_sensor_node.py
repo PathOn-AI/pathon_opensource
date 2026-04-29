@@ -17,7 +17,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 from rclpy.time import Time
 
-from sensor_msgs.msg import Image, CameraInfo, PointCloud2, PointField, Imu, LaserScan
+from sensor_msgs.msg import Image, CameraInfo, PointCloud2, PointField, Imu
 from geometry_msgs.msg import TransformStamped
 from std_msgs.msg import Header
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
@@ -39,7 +39,6 @@ class IPhoneSensorNode(Node):
         self.declare_parameter("publish_aligned_depth", True)
         self.declare_parameter("publish_confidence", True)
         self.declare_parameter("publish_imu", True)
-        self.declare_parameter("publish_scan", True)
         self.declare_parameter("usb", False)
         self.declare_parameter("depth_range_min", 0.1)
         self.declare_parameter("depth_range_max", 5.0)
@@ -54,7 +53,6 @@ class IPhoneSensorNode(Node):
         self.pub_aligned_enabled = self.get_parameter("publish_aligned_depth").value
         self.pub_conf_enabled = self.get_parameter("publish_confidence").value
         self.pub_imu_enabled = self.get_parameter("publish_imu").value
-        self.pub_scan_enabled = self.get_parameter("publish_scan").value
         self.depth_min = self.get_parameter("depth_range_min").value
         self.depth_max = self.get_parameter("depth_range_max").value
         self.min_confidence = self.get_parameter("min_confidence").value
@@ -62,7 +60,6 @@ class IPhoneSensorNode(Node):
         # Frame IDs
         self.color_optical_frame = f"{self.camera_name}_color_optical_frame"
         self.depth_optical_frame = f"{self.camera_name}_depth_optical_frame"
-        self.laser_frame = f"{self.camera_name}_laser_frame"
         self.camera_link_frame = f"{self.camera_name}_link"
         self.world_frame = "world"
 
@@ -92,9 +89,6 @@ class IPhoneSensorNode(Node):
 
         if self.pub_imu_enabled:
             self.pub_imu = self.create_publisher(Imu, "imu", sensor_qos)
-
-        if self.pub_scan_enabled:
-            self.pub_scan = self.create_publisher(LaserScan, "scan", sensor_qos)
 
         # TF broadcasters
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -133,20 +127,14 @@ class IPhoneSensorNode(Node):
         self.timer = self.create_timer(1.0 / 30.0, self._timer_callback)
 
     def _publish_static_tfs(self):
-        """Publish static TFs: camera_link -> optical frames + laser frame.
+        """Publish static TFs: camera_link -> optical frames.
 
         Optical frame convention: X-right, Y-down, Z-forward.
         From camera_link (X-forward, Y-left, Z-up): roll=-90, yaw=-90.
-        Laser frame: identity transform from camera_link (X-forward, Z-up).
         """
         now = self.get_clock().now().to_msg()
         transforms = []
 
-        # Rotation: camera_link -> optical frame
-        # roll=-90 deg, pitch=0, yaw=-90 deg
-        # q = quaternion for this rotation
-        # Using ZYX euler: yaw=-pi/2, pitch=0, roll=-pi/2
-        # q = (w, x, y, z) = (0.5, -0.5, 0.5, -0.5)
         q_optical = (0.5, -0.5, 0.5, -0.5)  # (x, y, z, w) in ROS
 
         for child_frame in [self.color_optical_frame, self.depth_optical_frame]:
@@ -160,16 +148,6 @@ class IPhoneSensorNode(Node):
             t.transform.rotation.z = q_optical[2]
             t.transform.rotation.w = q_optical[3]
             transforms.append(t)
-
-        # Laser frame: identity transform from camera_link
-        # Same position and orientation (both X-forward, Z-up body convention)
-        # ARKit aligns LiDAR depth to RGB camera, so no offset needed
-        t = TransformStamped()
-        t.header.stamp = now
-        t.header.frame_id = self.camera_link_frame
-        t.child_frame_id = self.laser_frame
-        t.transform.rotation.w = 1.0
-        transforms.append(t)
 
         self.static_tf_broadcaster.sendTransform(transforms)
 
@@ -261,13 +239,6 @@ class IPhoneSensorNode(Node):
             imu_msg.orientation_covariance[0] = -1.0
             self.pub_imu.publish(imu_msg)
 
-        # --- Publish LaserScan (middle row of depth) ---
-        if self.pub_scan_enabled:
-            laser_header = Header(stamp=now, frame_id=self.laser_frame)
-            scan_msg = self._make_laserscan(frame.depth, depth_intr, laser_header)
-            if scan_msg is not None:
-                self.pub_scan.publish(scan_msg)
-
         # --- Heavy operations: run at reduced rate to avoid blocking ---
         do_heavy = (self._frame_count % self._heavy_interval == 0)
 
@@ -310,54 +281,6 @@ class IPhoneSensorNode(Node):
             0.0, intr.fy, intr.ppy, 0.0,
             0.0, 0.0, 1.0, 0.0,
         ]
-        return msg
-
-    def _make_laserscan(self, depth, depth_intr, header):
-        """Convert middle row of depth image to LaserScan.
-
-        Depth is in optical frame (Z-forward, X-right).
-        LaserScan is in body frame (X-forward, Y-left).
-        Mapping: x_body = z_opt, y_body = -x_opt
-        Body angle = -atan2(x_opt, z_opt)  (negated from optical)
-        """
-        height, width = depth.shape
-        mid_row = depth[height // 2, :]
-
-        u = np.arange(width, dtype=np.float32)
-
-        # Optical angle: atan2(x_opt, z_opt) per pixel column
-        # Body angle: negate (rightward in optical = -Y in body = negative angle)
-        angles = -np.arctan2(u - depth_intr.ppx, depth_intr.fx)
-
-        # angles go positive→negative (left-to-right in image)
-        # LaserScan needs min_angle < max_angle, so reverse both angles and ranges
-        angles = angles[::-1]
-        mid_row = mid_row[::-1]
-
-        angle_min = float(angles[0])
-        angle_max = float(angles[-1])
-        angle_increment = float((angle_max - angle_min) / (width - 1))
-
-        # Convert depth (Z along optical axis) to range (radial distance)
-        cos_angles = np.cos(angles)
-        ranges = np.where(cos_angles > 0, mid_row / cos_angles, float('inf'))
-
-        # Clamp invalid values
-        ranges = np.where(
-            (ranges >= self.depth_min) & (ranges <= self.depth_max) & np.isfinite(ranges),
-            ranges, float('inf')
-        ).astype(np.float32)
-
-        msg = LaserScan()
-        msg.header = header
-        msg.angle_min = angle_min
-        msg.angle_max = angle_max
-        msg.angle_increment = angle_increment
-        msg.time_increment = 0.0
-        msg.scan_time = 1.0 / 30.0
-        msg.range_min = float(self.depth_min)
-        msg.range_max = float(self.depth_max)
-        msg.ranges = ranges.tolist()
         return msg
 
     def _make_pointcloud(self, frame, depth_intr, header):
